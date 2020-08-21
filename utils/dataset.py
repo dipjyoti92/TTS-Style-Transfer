@@ -4,11 +4,8 @@ import torch
 from torch.utils.data import Dataset, DataLoader
 from torch.utils.data.sampler import Sampler
 from utils.dsp import *
-from utils import hparams as hp
-from utils.text import text_to_sequence
-from utils.paths import Paths
-from pathlib import Path
 import hparams as hp
+from utils.text import text_to_sequence
 
 
 ###################################################################################
@@ -16,26 +13,26 @@ import hparams as hp
 ###################################################################################
 
 
-class VocoderDataset(Dataset):
-    def __init__(self, path: Path, dataset_ids, train_gta=False):
-        self.metadata = dataset_ids
-        self.mel_path = path/'gta' if train_gta else path/'mel'
-        self.quant_path = path/'quant'
+class VocoderDataset(Dataset) :
+    def __init__(self, ids, path, train_gta=False) :
+        self.metadata = ids
+        self.mel_path = f'{path}gta/' if train_gta else f'{path}mel/'
+        self.quant_path = f'{path}quant/'
 
 
-    def __getitem__(self, index):
-        item_id = self.metadata[index]
-        m = np.load(self.mel_path/f'{item_id}.npy')
-        x = np.load(self.quant_path/f'{item_id}.npy')
+    def __getitem__(self, index) :
+        id = self.metadata[index]
+        m = np.load(f'{self.mel_path}{id}.npy')
+        x = np.load(f'{self.quant_path}{id}.npy')
         return m, x
 
-    def __len__(self):
+    def __len__(self) :
         return len(self.metadata)
 
 
-def get_vocoder_datasets(path: Path, batch_size, train_gta):
+def get_vocoder_datasets(path, batch_size, train_gta) :
 
-    with open(path/'dataset.pkl', 'rb') as f:
+    with open(f'{path}dataset.pkl', 'rb') as f :
         dataset = pickle.load(f)
 
     dataset_ids = [x[0] for x in dataset]
@@ -46,8 +43,8 @@ def get_vocoder_datasets(path: Path, batch_size, train_gta):
     test_ids = dataset_ids[-hp.voc_test_samples:]
     train_ids = dataset_ids[:-hp.voc_test_samples]
 
-    train_dataset = VocoderDataset(path, train_ids, train_gta)
-    test_dataset = VocoderDataset(path, test_ids, train_gta)
+    train_dataset = VocoderDataset(train_ids, path, train_gta)
+    test_dataset = VocoderDataset(test_ids, path, train_gta)
 
     train_set = DataLoader(train_dataset,
                            collate_fn=collate_vocoder,
@@ -88,7 +85,7 @@ def collate_vocoder(batch):
 
     x = label_2_float(x.float(), bits)
 
-    if hp.voc_mode == 'MOL':
+    if hp.voc_mode == 'MOL' :
         y = label_2_float(y.float(), bits)
 
     return x, y, mels
@@ -99,39 +96,37 @@ def collate_vocoder(batch):
 ###################################################################################
 
 
-def get_tts_datasets(path: Path, batch_size, r):
+def get_tts_dataset(path, batch_size, r) :
 
-    with open(path/'dataset.pkl', 'rb') as f:
+    with open(f'{path}dataset.pkl', 'rb') as f :
         dataset = pickle.load(f)
 
     dataset_ids = []
     mel_lengths = []
 
-    for (item_id, len) in dataset:
-        if len <= hp.tts_max_mel_len:
-            dataset_ids += [item_id]
+    for (id, len) in dataset :
+        if len <= hp.tts_max_mel_len :
+            dataset_ids += [id]
             mel_lengths += [len]
 
-    with open(path/'text_dict.pkl', 'rb') as f:
+    with open(f'{path}text_dict.pkl', 'rb') as f:
         text_dict = pickle.load(f)
 
     train_dataset = TTSDataset(path, dataset_ids, text_dict)
 
     sampler = None
 
-    if hp.tts_bin_lengths:
+    if hp.tts_bin_lengths :
         sampler = BinnedLengthSampler(mel_lengths, batch_size, batch_size * 3)
 
     train_set = DataLoader(train_dataset,
-                           collate_fn=lambda batch: collate_tts(batch, r),
+                           collate_fn=lambda batch : collate_tts(batch, r),
                            batch_size=batch_size,
                            sampler=sampler,
                            num_workers=1,
                            pin_memory=True)
 
     longest = mel_lengths.index(max(mel_lengths))
-
-    # Used to evaluate attention during training process
     attn_example = dataset_ids[longest]
 
     # print(attn_example)
@@ -140,27 +135,27 @@ def get_tts_datasets(path: Path, batch_size, r):
 
 
 class TTSDataset(Dataset):
-    def __init__(self, path: Path, dataset_ids, text_dict):
+    def __init__(self, path, dataset_ids, text_dict) :
         self.path = path
         self.metadata = dataset_ids
         self.text_dict = text_dict
 
     def __getitem__(self, index):
-        item_id = self.metadata[index]
-        x = text_to_sequence(self.text_dict[item_id], hp.tts_cleaner_names)
-        mel = np.load(self.path/'mel'/f'{item_id}.npy')
+        id = self.metadata[index]
+        x = text_to_sequence(self.text_dict[id], hp.tts_cleaner_names)
+        mel = np.load(f'{self.path}mel/{id}.npy')
         mel_len = mel.shape[-1]
-        return x, mel, item_id, mel_len
+        return x, mel, id, mel_len
 
     def __len__(self):
         return len(self.metadata)
 
 
-def pad1d(x, max_len):
+def pad1d(x, max_len) :
     return np.pad(x, (0, max_len - len(x)), mode='constant')
 
 
-def pad2d(x, max_len):
+def pad2d(x, max_len) :
     return np.pad(x, ((0, 0), (0, max_len - x.shape[-1])), mode='constant')
 
 
@@ -200,7 +195,7 @@ class BinnedLengthSampler(Sampler):
 
     def __iter__(self):
         # Need to change to numpy since there's a bug in random.shuffle(tensor)
-        # TODO: Post an issue on pytorch repo
+        # TODO : Post an issue on pytorch repo
         idx = self.idx.numpy()
         bins = []
 
@@ -212,7 +207,7 @@ class BinnedLengthSampler(Sampler):
         random.shuffle(bins)
         binned_idx = np.stack(bins).reshape(-1)
 
-        if len(binned_idx) < len(idx):
+        if len(binned_idx) < len(idx) :
             last_bin = idx[len(binned_idx):]
             random.shuffle(last_bin)
             binned_idx = np.concatenate([binned_idx, last_bin])
@@ -221,3 +216,17 @@ class BinnedLengthSampler(Sampler):
 
     def __len__(self):
         return len(self.idx)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
