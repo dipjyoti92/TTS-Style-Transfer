@@ -71,7 +71,7 @@ NB: You can always just run train_wavernn.py without --gta if you're not interes
 
 4 - Generate Sentences with both models using:
 
-> python gen_tacotron.py wavernn
+> python gen_tacotron.py
 
 this will generate default sentences. If you want generate custom sentences you can use
 
